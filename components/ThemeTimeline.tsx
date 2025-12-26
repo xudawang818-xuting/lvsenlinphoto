@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ThemePlan, ThemeItem } from '../types';
 import { PlusIcon, ImageIcon, MapPinIcon, TrashIcon } from './Icons';
+import ImageViewer from './ImageViewer';
 
 interface ThemeTimelineProps {
   plans: ThemePlan[];
@@ -11,6 +12,11 @@ const ThemeTimeline: React.FC<ThemeTimelineProps> = ({ plans, setPlans }) => {
   const [editingMonth, setEditingMonth] = useState<number | null>(null);
   const [editingTheme, setEditingTheme] = useState<ThemeItem | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Viewer
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [viewerImages, setViewerImages] = useState<string[]>([]);
+  const [viewerIndex, setViewerIndex] = useState(0);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -66,6 +72,13 @@ const ThemeTimeline: React.FC<ThemeTimelineProps> = ({ plans, setPlans }) => {
     }
   };
 
+  const openViewer = (imgs: string[], idx: number) => {
+    if (imgs.length === 0) return;
+    setViewerImages(imgs);
+    setViewerIndex(idx);
+    setIsViewerOpen(true);
+  };
+
   const handleSave = () => {
     if (editingMonth === null) return;
     
@@ -118,6 +131,14 @@ const ThemeTimeline: React.FC<ThemeTimelineProps> = ({ plans, setPlans }) => {
 
   return (
     <div className="space-y-6">
+      {isViewerOpen && (
+        <ImageViewer 
+          images={viewerImages} 
+          initialIndex={viewerIndex} 
+          onClose={() => setIsViewerOpen(false)} 
+        />
+      )}
+
       <h2 className="text-2xl font-bold text-emerald-900">活动主题推荐</h2>
       <p className="text-gray-500">规划全年的拍摄主题灵感与视觉参考</p>
       
@@ -140,8 +161,20 @@ const ThemeTimeline: React.FC<ThemeTimelineProps> = ({ plans, setPlans }) => {
                     onClick={() => handleOpenEdit(m.num, t)}
                     className="bg-white border border-gray-200 rounded p-2 text-sm text-gray-700 hover:bg-emerald-50 cursor-pointer shadow-sm group"
                   >
-                    <div className="font-bold text-emerald-700">{t.title}</div>
-                    <div className="text-xs text-gray-500 truncate">{t.recommendLocation}</div>
+                    <div className="flex justify-between items-start mb-1">
+                      <div className="font-bold text-emerald-700">{t.title}</div>
+                      {t.images && t.images.length > 0 && <ImageIcon className="w-3 h-3 text-gray-400"/>}
+                    </div>
+                    <div className="text-xs text-gray-500 truncate mb-1">{t.recommendLocation}</div>
+                    
+                    {/* Tiny preview */}
+                    {t.images && t.images.length > 0 && (
+                      <div className="flex gap-1 overflow-hidden mt-1 h-8">
+                        {t.images.slice(0, 3).map((img, i) => (
+                           <img key={i} src={img} className="h-full w-auto rounded-sm object-cover" />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -156,7 +189,7 @@ const ThemeTimeline: React.FC<ThemeTimelineProps> = ({ plans, setPlans }) => {
         })}
       </div>
 
-      {/* Modal */}
+      {/* Edit/Add Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
@@ -211,7 +244,12 @@ const ThemeTimeline: React.FC<ThemeTimelineProps> = ({ plans, setPlans }) => {
                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 mb-3">
                    {images.map((img, idx) => (
                      <div key={idx} className="relative aspect-square bg-gray-100 rounded overflow-hidden group">
-                       <img src={img} alt="mood board" className="w-full h-full object-cover" />
+                       <img 
+                         src={img} 
+                         alt="mood board" 
+                         className="w-full h-full object-cover cursor-zoom-in" 
+                         onClick={() => openViewer(images, idx)}
+                       />
                        <button 
                          onClick={() => setImages(images.filter((_, i) => i !== idx))}
                          className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition"

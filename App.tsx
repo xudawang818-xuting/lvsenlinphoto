@@ -8,6 +8,11 @@ import LocationLibrary from './components/LocationLibrary';
 import MakeupLibrary from './components/MakeupLibrary';
 import { PhotographyEvent, ResourceItem, ResourceCategory, ThemePlan, LocationPartner, MakeupArtist } from './types';
 
+// --- 配置区域 ---
+// 你可以在这里修改访问密码
+const ACCESS_CODE = "lvsensen118"; 
+// ----------------
+
 // Mock initial data
 const INITIAL_EVENTS: PhotographyEvent[] = [
   {
@@ -22,14 +27,85 @@ const INITIAL_EVENTS: PhotographyEvent[] = [
 ];
 
 const INITIAL_RESOURCES: ResourceItem[] = [
-  { id: '101', name: '日系学生制服(L)', category: ResourceCategory.COSTUME, description: '深蓝色西装外套+格子裙', totalQuantity: 2, availableQuantity: 2, imageUrl: 'https://picsum.photos/200/200?random=1', location: 'A区衣柜', itemCode: 'C-001' },
-  { id: '102', name: '复古手提箱', category: ResourceCategory.PROP, description: '棕色皮质，适合复古风', totalQuantity: 1, availableQuantity: 1, imageUrl: 'https://picsum.photos/200/200?random=2', location: '道具间B2' },
+  { 
+    id: '101', 
+    name: '日系学生制服(L)', 
+    category: ResourceCategory.COSTUME, 
+    description: '深蓝色西装外套+格子裙', 
+    totalQuantity: 2, 
+    availableQuantity: 2, 
+    imageUrl: 'https://picsum.photos/200/200?random=1', 
+    images: ['https://picsum.photos/200/200?random=1'],
+    displayAspect: 'portrait',
+    location: 'A区衣柜', 
+    itemCode: 'C-001' 
+  },
+  { 
+    id: '102', 
+    name: '复古手提箱', 
+    category: ResourceCategory.PROP, 
+    description: '棕色皮质，适合复古风', 
+    totalQuantity: 1, 
+    availableQuantity: 1, 
+    imageUrl: 'https://picsum.photos/200/200?random=2', 
+    images: ['https://picsum.photos/200/200?random=2'],
+    displayAspect: 'square',
+    location: '道具间B2' 
+  },
 ];
 
+// --- Login Component ---
+const LoginScreen = ({ onLogin }: { onLogin: (code: string) => void }) => {
+  const [code, setCode] = useState('');
+  const [error, setError] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onLogin(code);
+    setError(true); // If onLogin doesn't succeed (parent handles logic), this will show error
+  };
+
+  return (
+    <div className="min-h-screen bg-emerald-50 flex flex-col items-center justify-center p-4">
+      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center border border-emerald-100">
+        <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">
+          🌲
+        </div>
+        <h1 className="text-2xl font-bold text-emerald-900 mb-2">绿森林摄影活动管理</h1>
+        <p className="text-gray-500 mb-8 text-sm">内部管理系统，请输入访问口令进入</p>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <input
+              type="password"
+              value={code}
+              onChange={(e) => { setCode(e.target.value); setError(false); }}
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition text-center text-lg tracking-widest"
+              placeholder="请输入访问口令"
+              autoFocus
+            />
+          </div>
+          {error && <p className="text-red-500 text-sm">口令错误，请联系管理员获取</p>}
+          <button
+            type="submit"
+            className="w-full bg-emerald-600 text-white py-3 rounded-lg font-bold hover:bg-emerald-700 transition shadow-lg shadow-emerald-200"
+          >
+            解锁进入
+          </button>
+        </form>
+        <div className="mt-8 text-xs text-gray-400">
+          &copy; Green Forest Photography
+        </div>
+      </div>
+    </div>
+  );
+};
+
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentView, setCurrentView] = useState<'events' | 'resources' | 'schedule' | 'themes' | 'locations' | 'makeup'>('events');
   
-  // State
+  // Data State
   const [events, setEvents] = useState<PhotographyEvent[]>(() => {
     const saved = localStorage.getItem('gf_events');
     return saved ? JSON.parse(saved) : INITIAL_EVENTS;
@@ -55,12 +131,34 @@ function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Auth Check on Mount
+  useEffect(() => {
+    const authStatus = localStorage.getItem('gf_auth_token');
+    if (authStatus === 'valid') {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
   // Persistence
   useEffect(() => { localStorage.setItem('gf_events', JSON.stringify(events)); }, [events]);
   useEffect(() => { localStorage.setItem('gf_resources', JSON.stringify(resources)); }, [resources]);
   useEffect(() => { localStorage.setItem('gf_themes', JSON.stringify(themePlans)); }, [themePlans]);
   useEffect(() => { localStorage.setItem('gf_locations', JSON.stringify(locations)); }, [locations]);
   useEffect(() => { localStorage.setItem('gf_makeup', JSON.stringify(makeupArtists)); }, [makeupArtists]);
+
+  const handleLogin = (code: string) => {
+    if (code === ACCESS_CODE) {
+      localStorage.setItem('gf_auth_token', 'valid');
+      setIsAuthenticated(true);
+    }
+  };
+
+  const handleLogout = () => {
+    if (confirm('确定要退出登录吗？')) {
+      localStorage.removeItem('gf_auth_token');
+      setIsAuthenticated(false);
+    }
+  };
 
   const NavItem = ({ view, label, icon: Icon }: any) => (
     <button
@@ -76,30 +174,50 @@ function App() {
     </button>
   );
 
+  // Guard Clause: If not authenticated, show login screen
+  if (!isAuthenticated) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
   return (
     <div className="min-h-screen bg-emerald-50 text-gray-800 flex flex-col md:flex-row">
       
       {/* Sidebar Navigation */}
-      <aside className="bg-white w-full md:w-64 md:h-screen md:fixed flex-shrink-0 border-r border-emerald-100 shadow-sm z-20 overflow-y-auto">
-        <div className="p-6 flex items-center gap-3 border-b border-emerald-50 sticky top-0 bg-white z-10">
-          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold">
-            🌲
+      <aside className="bg-white w-full md:w-64 md:h-screen md:fixed flex-shrink-0 border-r border-emerald-100 shadow-sm z-20 overflow-y-auto flex flex-col justify-between">
+        <div>
+          <div className="p-6 flex items-center gap-3 border-b border-emerald-50 sticky top-0 bg-white z-10">
+            <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold">
+              🌲
+            </div>
+            <h1 className="text-xl font-bold text-emerald-900 tracking-tight">绿森林摄影</h1>
           </div>
-          <h1 className="text-xl font-bold text-emerald-900 tracking-tight">绿森林摄影</h1>
+
+          <nav className="p-4 space-y-2">
+            <NavItem view="events" label="活动发布" icon={CameraIcon} />
+            <NavItem view="schedule" label="活动排期表" icon={CalendarIcon} />
+            <NavItem view="resources" label="资源登记" icon={BoxIcon} />
+            
+            <div className="pt-4 border-t border-emerald-50">
+              <p className="px-4 text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider">策划与合作</p>
+              <NavItem view="themes" label="活动主题推荐" icon={StarIcon} />
+              <NavItem view="locations" label="场地资源" icon={MapPinIcon} />
+              <NavItem view="makeup" label="化妆师合作" icon={UserIcon} />
+            </div>
+          </nav>
         </div>
 
-        <nav className="p-4 space-y-2">
-          <NavItem view="events" label="活动发布" icon={CameraIcon} />
-          <NavItem view="schedule" label="活动排期表" icon={CalendarIcon} />
-          <NavItem view="resources" label="资源登记" icon={BoxIcon} />
-          
-          <div className="pt-4 border-t border-emerald-50">
-            <p className="px-4 text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider">策划与合作</p>
-            <NavItem view="themes" label="活动主题推荐" icon={StarIcon} />
-            <NavItem view="locations" label="场地合作资源" icon={MapPinIcon} />
-            <NavItem view="makeup" label="化妆师合作" icon={UserIcon} />
-          </div>
-        </nav>
+        {/* Logout Section */}
+        <div className="p-4 border-t border-gray-100">
+           <button 
+             onClick={handleLogout}
+             className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+           >
+             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+             </svg>
+             退出登录
+           </button>
+        </div>
       </aside>
 
       {/* Main Content */}

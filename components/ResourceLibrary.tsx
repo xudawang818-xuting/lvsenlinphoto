@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { ResourceItem, ResourceCategory } from '../types';
+import { ResourceItem, ResourceCategory, AspectRatio } from '../types';
 import { PlusIcon, TrashIcon, MapPinIcon, CalendarIcon, ImageIcon } from './Icons';
+import ImageViewer from './ImageViewer';
 
 interface ResourceLibraryProps {
   resources: ResourceItem[];
@@ -11,6 +12,11 @@ const ResourceLibrary: React.FC<ResourceLibraryProps> = ({ resources, setResourc
   const [activeTab, setActiveTab] = useState<ResourceCategory>(ResourceCategory.COSTUME);
   const [isAdding, setIsAdding] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ResourceItem | null>(null);
+  
+  // Viewer State
+  const [viewerImages, setViewerImages] = useState<string[]>([]);
+  const [viewerIndex, setViewerIndex] = useState(0);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
 
   // New Resource State
   const [newName, setNewName] = useState('');
@@ -18,7 +24,8 @@ const ResourceLibrary: React.FC<ResourceLibraryProps> = ({ resources, setResourc
   const [newTotal, setNewTotal] = useState(1);
   const [newLocation, setNewLocation] = useState('');
   const [newItemCode, setNewItemCode] = useState('');
-  const [newImage, setNewImage] = useState('');
+  const [newImages, setNewImages] = useState<string[]>([]);
+  const [newAspect, setNewAspect] = useState<AspectRatio>('portrait');
 
   const tabs = [
     { id: ResourceCategory.COSTUME, label: '服装 (Costume)', emoji: '👗' },
@@ -30,20 +37,34 @@ const ResourceLibrary: React.FC<ResourceLibraryProps> = ({ resources, setResourc
   const filteredResources = resources.filter(r => r.category === activeTab);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (reader.result) {
-          setNewImage(reader.result as string);
-        }
-      };
-      reader.readAsDataURL(file);
+    const files = e.target.files;
+    if (files) {
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (reader.result) {
+            setNewImages(prev => [...prev, reader.result as string]);
+          }
+        };
+        reader.readAsDataURL(file);
+      });
     }
+  };
+
+  const removeNewImage = (index: number) => {
+    setNewImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const openViewer = (images: string[], index: number = 0) => {
+    setViewerImages(images);
+    setViewerIndex(index);
+    setIsViewerOpen(true);
   };
 
   const handleAddResource = (e: React.FormEvent) => {
     e.preventDefault();
+    const finalImages = newImages.length > 0 ? newImages : [`https://picsum.photos/300/400?random=${Date.now()}`];
+    
     const newItem: ResourceItem = {
       id: Date.now().toString(),
       name: newName,
@@ -54,16 +75,15 @@ const ResourceLibrary: React.FC<ResourceLibraryProps> = ({ resources, setResourc
       location: newLocation,
       itemCode: activeTab === ResourceCategory.COSTUME ? newItemCode : undefined,
       bookedDates: [],
-      imageUrl: newImage || `https://picsum.photos/200/200?random=${Date.now()}` 
+      images: finalImages,
+      imageUrl: finalImages[0], // fallback
+      displayAspect: newAspect
     };
     setResources([...resources, newItem]);
     setIsAdding(false);
-    setNewName('');
-    setNewDesc('');
-    setNewTotal(1);
-    setNewLocation('');
-    setNewItemCode('');
-    setNewImage('');
+    // Reset
+    setNewName(''); setNewDesc(''); setNewTotal(1); setNewLocation('');
+    setNewItemCode(''); setNewImages([]); setNewAspect('portrait');
   };
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
@@ -96,35 +116,28 @@ const ResourceLibrary: React.FC<ResourceLibraryProps> = ({ resources, setResourc
       setResources(resources.map(r => r.id === selectedItem.id ? updatedItem : r));
   };
 
-  // Helper to render calendar grid
   const renderCalendar = () => {
     const today = new Date();
     const year = today.getFullYear();
     const month = today.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const firstDay = new Date(year, month, 1).getDay(); // 0 is Sunday
+    const firstDay = new Date(year, month, 1).getDay();
 
     const days = [];
-    // Empty slots for previous month
     for (let i = 0; i < firstDay; i++) {
       days.push(<div key={`empty-${i}`} className="h-10"></div>);
     }
-    
-    // Days
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const isBooked = selectedItem?.bookedDates?.includes(dateStr);
-      
       days.push(
         <button
           key={dateStr}
           onClick={() => toggleDateBooking(dateStr)}
           className={`h-10 w-full rounded flex items-center justify-center text-sm font-medium transition-colors ${
-             isBooked 
-               ? 'bg-red-100 text-red-700 border border-red-200' 
-               : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+             isBooked ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
           }`}
-          title={isBooked ? "Click to cancel" : "Click to book"}
+          title={isBooked ? "点击取消占用" : "点击标记为占用"}
         >
           {d}
         </button>
@@ -133,8 +146,25 @@ const ResourceLibrary: React.FC<ResourceLibraryProps> = ({ resources, setResourc
     return days;
   };
 
+  const getAspectRatioClass = (aspect: AspectRatio) => {
+    switch (aspect) {
+      case 'video': return 'aspect-video'; // 16:9
+      case 'portrait': return 'aspect-[3/4]'; // 3:4
+      case 'square': return 'aspect-square'; // 1:1
+      default: return 'aspect-[3/4]';
+    }
+  };
+
   return (
     <div className="space-y-6 relative">
+      {isViewerOpen && (
+        <ImageViewer 
+          images={viewerImages} 
+          initialIndex={viewerIndex} 
+          onClose={() => setIsViewerOpen(false)} 
+        />
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-2xl font-bold text-emerald-900">资源管理库</h2>
         <div className="flex bg-emerald-100 p-1 rounded-lg overflow-x-auto max-w-full">
@@ -143,9 +173,7 @@ const ResourceLibrary: React.FC<ResourceLibraryProps> = ({ resources, setResourc
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'bg-white text-emerald-700 shadow-sm'
-                  : 'text-emerald-600 hover:text-emerald-800'
+                activeTab === tab.id ? 'bg-white text-emerald-700 shadow-sm' : 'text-emerald-600 hover:text-emerald-800'
               }`}
             >
               <span className="mr-2">{tab.emoji}</span>
@@ -155,7 +183,6 @@ const ResourceLibrary: React.FC<ResourceLibraryProps> = ({ resources, setResourc
         </div>
       </div>
 
-      {/* Add Button */}
       {!isAdding && (
         <button
           onClick={() => setIsAdding(true)}
@@ -166,127 +193,104 @@ const ResourceLibrary: React.FC<ResourceLibraryProps> = ({ resources, setResourc
         </button>
       )}
 
-      {/* Add Form */}
       {isAdding && (
         <div className="bg-white p-6 rounded-xl shadow-md border border-emerald-100 animate-slide-down">
            <h3 className="text-lg font-semibold mb-4">
              添加新{tabs.find(t => t.id === activeTab)?.label.split(' ')[0]}
            </h3>
            <form onSubmit={handleAddResource} className="space-y-4">
-             
-             <div className="flex gap-4">
-               {/* Image Upload Area */}
-               <div className="flex-shrink-0">
-                  <label className="w-24 h-24 md:w-32 md:h-32 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 hover:border-emerald-400 transition text-gray-400 hover:text-emerald-500 bg-gray-50 relative overflow-hidden">
-                    {newImage ? (
-                      <img src={newImage} alt="preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <>
-                        <ImageIcon className="w-6 h-6 mb-1"/>
-                        <span className="text-xs text-center px-1">上传首图</span>
-                      </>
-                    )}
-                    <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                  </label>
+             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+               {/* Left: Image Upload */}
+               <div className="lg:col-span-1 space-y-3">
+                  <label className="block text-sm font-medium text-gray-700">图片展示 (多图)</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {newImages.map((img, idx) => (
+                      <div key={idx} className={`relative rounded overflow-hidden border border-gray-200 ${getAspectRatioClass(newAspect)}`}>
+                        <img src={img} className="w-full h-full object-cover" />
+                        <button type="button" onClick={() => removeNewImage(idx)} className="absolute top-0 right-0 bg-red-500 text-white p-1 rounded-bl">
+                          <TrashIcon className="w-3 h-3"/>
+                        </button>
+                      </div>
+                    ))}
+                    <label className={`flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded cursor-pointer hover:border-emerald-500 hover:bg-emerald-50 transition ${getAspectRatioClass(newAspect)}`}>
+                      <ImageIcon className="w-6 h-6 text-gray-400"/>
+                      <span className="text-xs text-gray-500 mt-1">上传</span>
+                      <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageUpload} />
+                    </label>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">首图展示比例</label>
+                    <div className="flex gap-2">
+                       {[
+                         { id: 'portrait', label: '竖屏 (3:4)' },
+                         { id: 'video', label: '横屏 (16:9)' },
+                         { id: 'square', label: '正方 (1:1)' }
+                       ].map(opt => (
+                         <button
+                           key={opt.id}
+                           type="button"
+                           onClick={() => setNewAspect(opt.id as AspectRatio)}
+                           className={`flex-1 py-1 text-xs border rounded ${newAspect === opt.id ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-300'}`}
+                         >
+                           {opt.label}
+                         </button>
+                       ))}
+                    </div>
+                  </div>
                </div>
 
-               <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">名称</label>
-                    <input
-                      required
-                      type="text"
-                      value={newName}
-                      onChange={e => setNewName(e.target.value)}
-                      className="w-full rounded-md border-gray-300 shadow-sm border px-3 py-2 focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                      placeholder="资源名称"
-                    />
+               {/* Right: Info */}
+               <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="col-span-full">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">资源名称</label>
+                    <input required value={newName} onChange={e => setNewName(e.target.value)} className="input-field" placeholder="资源名称" />
                   </div>
 
-                  {/* Only show Code field for Costumes */}
                   {activeTab === ResourceCategory.COSTUME && (
                     <div>
                         <label className="block text-xs font-medium text-gray-500 mb-1">衣服编码</label>
-                        <input
-                          type="text"
-                          value={newItemCode}
-                          onChange={e => setNewItemCode(e.target.value)}
-                          className="w-full rounded-md border-gray-300 shadow-sm border px-3 py-2 focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                          placeholder="例如: C-2023001"
-                        />
+                        <input value={newItemCode} onChange={e => setNewItemCode(e.target.value)} className="input-field" placeholder="例如: C-001" />
                     </div>
                   )}
 
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">物品所在地</label>
-                    <input
-                      type="text"
-                      value={newLocation}
-                      onChange={e => setNewLocation(e.target.value)}
-                      className="w-full rounded-md border-gray-300 shadow-sm border px-3 py-2 focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                      placeholder="例如：A架2层 / 1号仓库"
-                    />
+                    <input value={newLocation} onChange={e => setNewLocation(e.target.value)} className="input-field" placeholder="例如：A架2层" />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">数量</label>
-                      <input
-                      type="number"
-                      min="1"
-                      value={newTotal}
-                      onChange={e => setNewTotal(parseInt(e.target.value))}
-                      className="w-full rounded-md border-gray-300 shadow-sm border px-3 py-2 focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                    />
+                    <label className="block text-xs font-medium text-gray-500 mb-1">总库存</label>
+                    <input type="number" min="1" value={newTotal} onChange={e => setNewTotal(parseInt(e.target.value))} className="input-field" />
+                  </div>
+
+                  <div className="col-span-full">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">描述/备注</label>
+                    <textarea value={newDesc} onChange={e => setNewDesc(e.target.value)} rows={3} className="input-field" placeholder="详细信息..." />
                   </div>
                </div>
              </div>
 
-             <div>
-               <label className="block text-xs font-medium text-gray-500 mb-1">描述/备注</label>
-               <input
-                 type="text"
-                 value={newDesc}
-                 onChange={e => setNewDesc(e.target.value)}
-                 className="w-full rounded-md border-gray-300 shadow-sm border px-3 py-2 focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                 placeholder="尺寸、颜色、状况等详细信息..."
-               />
-             </div>
-
              <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-               <button
-                 type="button"
-                 onClick={() => setIsAdding(false)}
-                 className="px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200"
-               >
-                 取消
-               </button>
-               <button
-                 type="submit"
-                 className="px-3 py-2 text-sm text-white bg-emerald-600 rounded hover:bg-emerald-700"
-               >
-                 确认添加
-               </button>
+               <button type="button" onClick={() => setIsAdding(false)} className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded">取消</button>
+               <button type="submit" className="px-4 py-2 text-sm text-white bg-emerald-600 rounded">保存</button>
              </div>
            </form>
+           <style>{`.input-field { width: 100%; border: 1px solid #d1d5db; border-radius: 0.375rem; padding: 0.5rem; font-size: 0.875rem; outline: none; } .input-field:focus { border-color: #10b981; }`}</style>
         </div>
       )}
 
-      {/* List */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {filteredResources.length === 0 ? (
-          <p className="col-span-full text-center text-gray-400 py-8">
-            该分类下暂无资源，请点击上方添加。
-          </p>
-        ) : (
-          filteredResources.map((item) => (
+      {/* Grid List */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {filteredResources.map((item) => (
             <div 
               key={item.id} 
               onClick={() => setSelectedItem(item)}
               className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col cursor-pointer hover:ring-2 hover:ring-emerald-400 transition group"
             >
-              <div className="aspect-video bg-gray-100 relative overflow-hidden">
+              <div className={`bg-gray-100 relative overflow-hidden ${getAspectRatioClass(item.displayAspect || 'portrait')}`}>
                 <img
-                  src={item.imageUrl}
+                  src={item.images?.[0] || item.imageUrl}
                   alt={item.name}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
@@ -295,93 +299,99 @@ const ResourceLibrary: React.FC<ResourceLibraryProps> = ({ resources, setResourc
                 }`}>
                   {item.availableQuantity > 0 ? '可用' : '借出'}
                 </span>
-                {item.itemCode && (
-                  <span className="absolute bottom-2 left-2 px-2 py-0.5 text-xs rounded bg-black/60 text-white font-mono">
-                    {item.itemCode}
+                {item.images?.length > 1 && (
+                  <span className="absolute bottom-2 right-2 px-1.5 py-0.5 text-[10px] rounded bg-black/50 text-white">
+                    +{item.images.length - 1}
                   </span>
                 )}
               </div>
               <div className="p-3 flex-1 flex flex-col">
                 <div className="flex justify-between items-start mb-1">
-                  <h4 className="font-semibold text-gray-800 truncate">{item.name}</h4>
-                  <button onClick={(e) => handleDelete(item.id, e)} className="text-gray-400 hover:text-red-500">
-                    <TrashIcon className="w-4 h-4"/>
-                  </button>
+                  <h4 className="font-semibold text-gray-800 truncate text-sm">{item.name}</h4>
                 </div>
-                <p className="text-xs text-gray-500 mb-3 flex-1 line-clamp-2">{item.description || '无详细描述'}</p>
                  {item.location && (
                     <div className="flex items-center gap-1 text-xs text-gray-500 mb-2">
                        <MapPinIcon className="w-3 h-3"/> {item.location}
                     </div>
                 )}
-                <div className="flex justify-between items-center text-sm border-t pt-2">
-                  <span className="text-gray-600">库存: {item.totalQuantity}</span>
-                  <span className="font-medium text-emerald-600">剩余: {item.availableQuantity}</span>
-                </div>
               </div>
             </div>
-          ))
-        )}
+        ))}
       </div>
 
       {/* Detail Modal */}
       {selectedItem && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
-             <button 
-               onClick={() => setSelectedItem(null)}
-               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-             >
-               ✕
-             </button>
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl relative flex flex-col md:flex-row gap-6">
+             <button onClick={() => setSelectedItem(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 z-10">✕</button>
              
-             <div className="flex gap-4 mb-6">
-                <div className="w-24 h-24 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 shadow-md">
-                   <img src={selectedItem.imageUrl} className="w-full h-full object-cover" alt={selectedItem.name}/>
+             {/* Left: Gallery */}
+             <div className="w-full md:w-1/2 flex flex-col gap-3">
+                <div 
+                  className={`w-full bg-gray-100 rounded-lg overflow-hidden cursor-zoom-in ${getAspectRatioClass(selectedItem.displayAspect || 'portrait')}`}
+                  onClick={() => openViewer(selectedItem.images || [selectedItem.imageUrl || ''], 0)}
+                >
+                   <img src={selectedItem.images?.[0] || selectedItem.imageUrl} className="w-full h-full object-cover" />
                 </div>
+                <div className="grid grid-cols-5 gap-2">
+                   {selectedItem.images?.map((img, idx) => (
+                     <div 
+                       key={idx} 
+                       className="aspect-square rounded overflow-hidden cursor-pointer border hover:border-emerald-500"
+                       onClick={() => openViewer(selectedItem.images || [], idx)}
+                     >
+                       <img src={img} className="w-full h-full object-cover" />
+                     </div>
+                   ))}
+                </div>
+             </div>
+
+             {/* Right: Details */}
+             <div className="flex-1 space-y-4">
                 <div>
-                  <h3 className="text-xl font-bold text-gray-800">{selectedItem.name}</h3>
-                  {selectedItem.itemCode && (
-                    <span className="text-xs font-mono bg-emerald-100 text-emerald-800 px-2 py-1 rounded inline-block mb-1">
-                      {selectedItem.itemCode}
+                  <h3 className="text-2xl font-bold text-gray-800">{selectedItem.name}</h3>
+                  <div className="flex gap-2 mt-2">
+                    {selectedItem.itemCode && <span className="text-xs font-mono bg-emerald-100 text-emerald-800 px-2 py-1 rounded">{selectedItem.itemCode}</span>}
+                    <span className={`px-2 py-1 text-xs rounded ${selectedItem.availableQuantity > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        库存: {selectedItem.availableQuantity} / {selectedItem.totalQuantity}
                     </span>
-                  )}
-                  <p className="text-gray-500 text-sm mt-1">{selectedItem.description}</p>
-                  
-                  <div className="flex items-center gap-2 mt-2">
-                     <span className={`px-2 py-0.5 text-xs rounded-full ${selectedItem.availableQuantity > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                        {selectedItem.availableQuantity > 0 ? '目前可用' : '暂时借出'}
-                     </span>
-                     <span className="text-xs text-gray-500">总库存: {selectedItem.totalQuantity}</span>
                   </div>
                 </div>
-             </div>
 
-             <div className="mb-6">
-               <label className="block text-sm font-medium text-gray-700 mb-1">物品所在地</label>
-               <div className="flex gap-2">
-                 <input 
-                   type="text" 
-                   value={selectedItem.location || ''} 
-                   onChange={(e) => updateItemLocation(e.target.value)}
-                   className="flex-1 border border-gray-300 rounded px-3 py-1 text-sm focus:border-emerald-500 focus:outline-none"
-                   placeholder="输入物品存放位置..."
-                 />
-                 <button className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded text-sm">保存</button>
-               </div>
-             </div>
+                <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600 leading-relaxed">
+                   {selectedItem.description || '暂无描述'}
+                </div>
 
-             <div>
-               <h4 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
-                 <CalendarIcon className="w-4 h-4"/> 档期占用情况 ({new Date().getMonth()+1}月)
-               </h4>
-               <p className="text-xs text-gray-500 mb-2">点击日期标记为“已占用/被预定”</p>
-               <div className="grid grid-cols-7 gap-2 text-center">
-                 {['日','一','二','三','四','五','六'].map(d => (
-                   <div key={d} className="text-xs text-gray-400">{d}</div>
-                 ))}
-                 {renderCalendar()}
-               </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">物品所在地</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={selectedItem.location || ''} 
+                      onChange={(e) => updateItemLocation(e.target.value)}
+                      className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:border-emerald-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t">
+                  <h4 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                    <CalendarIcon className="w-4 h-4"/> 档期表
+                  </h4>
+                  <div className="grid grid-cols-7 gap-1 text-center">
+                    {['日','一','二','三','四','五','六'].map(d => <div key={d} className="text-xs text-gray-400">{d}</div>)}
+                    {renderCalendar()}
+                  </div>
+                </div>
+                
+                <div className="pt-4 flex justify-end">
+                   <button 
+                     onClick={(e) => handleDelete(selectedItem.id, e)} 
+                     className="text-red-500 text-sm hover:underline flex items-center gap-1"
+                   >
+                     <TrashIcon className="w-4 h-4"/> 删除此资源
+                   </button>
+                </div>
              </div>
           </div>
         </div>
