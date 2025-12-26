@@ -101,6 +101,20 @@ const LoginScreen = ({ onLogin }: { onLogin: (code: string) => void }) => {
   );
 };
 
+// Helper for safe storage
+const useSafeStorage = (key: string, data: any) => {
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, JSON.stringify(data));
+    } catch (e: any) {
+      console.error(`Save failed for ${key}`, e);
+      if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+        alert("⚠️ 存储空间不足！无法保存最新数据。\n\n原因：图片太多或太大。\n解决：请删除一些不用的旧数据（如旧活动、旧资源），或减少上传图片的数量。");
+      }
+    }
+  }, [key, data]);
+};
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentView, setCurrentView] = useState<'events' | 'resources' | 'schedule' | 'themes' | 'locations' | 'makeup'>('events');
@@ -139,12 +153,12 @@ function App() {
     }
   }, []);
 
-  // Persistence
-  useEffect(() => { localStorage.setItem('gf_events', JSON.stringify(events)); }, [events]);
-  useEffect(() => { localStorage.setItem('gf_resources', JSON.stringify(resources)); }, [resources]);
-  useEffect(() => { localStorage.setItem('gf_themes', JSON.stringify(themePlans)); }, [themePlans]);
-  useEffect(() => { localStorage.setItem('gf_locations', JSON.stringify(locations)); }, [locations]);
-  useEffect(() => { localStorage.setItem('gf_makeup', JSON.stringify(makeupArtists)); }, [makeupArtists]);
+  // Persistence with error handling
+  useSafeStorage('gf_events', events);
+  useSafeStorage('gf_resources', resources);
+  useSafeStorage('gf_themes', themePlans);
+  useSafeStorage('gf_locations', locations);
+  useSafeStorage('gf_makeup', makeupArtists);
 
   const handleLogin = (code: string) => {
     if (code === ACCESS_CODE) {

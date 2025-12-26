@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ThemePlan, ThemeItem } from '../types';
 import { PlusIcon, ImageIcon, MapPinIcon, TrashIcon } from './Icons';
 import ImageViewer from './ImageViewer';
+import { compressImage } from '../utils/imageCompressor';
 
 interface ThemeTimelineProps {
   plans: ThemePlan[];
@@ -12,6 +13,7 @@ const ThemeTimeline: React.FC<ThemeTimelineProps> = ({ plans, setPlans }) => {
   const [editingMonth, setEditingMonth] = useState<number | null>(null);
   const [editingTheme, setEditingTheme] = useState<ThemeItem | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isProcessingImg, setIsProcessingImg] = useState(false);
 
   // Viewer
   const [isViewerOpen, setIsViewerOpen] = useState(false);
@@ -57,18 +59,23 @@ const ThemeTimeline: React.FC<ThemeTimelineProps> = ({ plans, setPlans }) => {
     setIsModalOpen(true);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files) {
-      Array.from(files).forEach(file => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          if (reader.result) {
-            setImages(prev => [...prev, reader.result as string]);
-          }
-        };
-        reader.readAsDataURL(file);
-      });
+    if (files && files.length > 0) {
+      setIsProcessingImg(true);
+      const newCompressedImages: string[] = [];
+      try {
+        for (let i = 0; i < files.length; i++) {
+          const compressed = await compressImage(files[i]);
+          newCompressedImages.push(compressed);
+        }
+        setImages(prev => [...prev, ...newCompressedImages]);
+      } catch (err) {
+        console.error(err);
+        alert('图片处理失败');
+      } finally {
+        setIsProcessingImg(false);
+      }
     }
   };
 
@@ -258,10 +265,16 @@ const ThemeTimeline: React.FC<ThemeTimelineProps> = ({ plans, setPlans }) => {
                        </button>
                      </div>
                    ))}
-                   <label className="aspect-square flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded cursor-pointer hover:bg-gray-50 hover:border-emerald-400 transition text-gray-400 hover:text-emerald-500">
-                     <ImageIcon className="w-6 h-6 mb-1"/>
-                     <span className="text-xs">上传图片</span>
-                     <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageUpload}/>
+                   <label className={`aspect-square flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded cursor-pointer hover:bg-gray-50 hover:border-emerald-400 transition text-gray-400 hover:text-emerald-500 ${isProcessingImg ? 'opacity-50 cursor-wait' : ''}`}>
+                     {isProcessingImg ? (
+                        <span className="text-xs">处理中...</span>
+                     ) : (
+                        <>
+                          <ImageIcon className="w-6 h-6 mb-1"/>
+                          <span className="text-xs">上传图片</span>
+                        </>
+                     )}
+                     <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageUpload} disabled={isProcessingImg}/>
                    </label>
                  </div>
                </div>
@@ -276,7 +289,8 @@ const ThemeTimeline: React.FC<ThemeTimelineProps> = ({ plans, setPlans }) => {
                </button>
                <button 
                  onClick={handleSave}
-                 className="px-4 py-2 text-white bg-emerald-600 rounded hover:bg-emerald-700"
+                 disabled={isProcessingImg}
+                 className="px-4 py-2 text-white bg-emerald-600 rounded hover:bg-emerald-700 disabled:opacity-50"
                >
                  保存主题
                </button>

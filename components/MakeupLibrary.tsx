@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { MakeupArtist } from '../types';
 import { PlusIcon, MapPinIcon, ImageIcon, TrashIcon } from './Icons';
 import ImageViewer from './ImageViewer';
+import { compressImage } from '../utils/imageCompressor';
 
 interface MakeupLibraryProps {
   artists: MakeupArtist[];
@@ -11,6 +12,7 @@ interface MakeupLibraryProps {
 const MakeupLibrary: React.FC<MakeupLibraryProps> = ({ artists, setArtists }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [selectedArtist, setSelectedArtist] = useState<MakeupArtist | null>(null);
+  const [isProcessingImg, setIsProcessingImg] = useState(false);
 
   // Viewer
   const [isViewerOpen, setIsViewerOpen] = useState(false);
@@ -26,16 +28,23 @@ const MakeupLibrary: React.FC<MakeupLibraryProps> = ({ artists, setArtists }) =>
   const [notes, setNotes] = useState('');
   const [images, setImages] = useState<string[]>([]);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files) {
-      Array.from(files).forEach(file => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          if (reader.result) setImages(prev => [...prev, reader.result as string]);
-        };
-        reader.readAsDataURL(file);
-      });
+    if (files && files.length > 0) {
+      setIsProcessingImg(true);
+      const newCompressedImages: string[] = [];
+      try {
+        for (let i = 0; i < files.length; i++) {
+          const compressed = await compressImage(files[i]);
+          newCompressedImages.push(compressed);
+        }
+        setImages(prev => [...prev, ...newCompressedImages]);
+      } catch (err) {
+        console.error(err);
+        alert('图片处理失败');
+      } finally {
+        setIsProcessingImg(false);
+      }
     }
   };
 
@@ -113,10 +122,16 @@ const MakeupLibrary: React.FC<MakeupLibraryProps> = ({ artists, setArtists }) =>
                         </button>
                       </div>
                     ))}
-                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded cursor-pointer hover:border-emerald-500 hover:bg-emerald-50 transition aspect-[3/4]">
-                      <ImageIcon className="w-6 h-6 text-gray-400"/>
-                      <span className="text-xs text-gray-500 mt-1">上传</span>
-                      <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageUpload} />
+                    <label className={`flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded cursor-pointer hover:border-emerald-500 hover:bg-emerald-50 transition aspect-[3/4] ${isProcessingImg ? 'opacity-50 cursor-wait' : ''}`}>
+                       {isProcessingImg ? (
+                        <span className="text-xs text-gray-500">处理中...</span>
+                      ) : (
+                        <>
+                          <ImageIcon className="w-6 h-6 text-gray-400"/>
+                          <span className="text-xs text-gray-500 mt-1">上传</span>
+                        </>
+                      )}
+                      <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageUpload} disabled={isProcessingImg} />
                     </label>
                   </div>
                </div>
@@ -134,7 +149,7 @@ const MakeupLibrary: React.FC<MakeupLibraryProps> = ({ artists, setArtists }) =>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
               <button type="button" onClick={() => setIsAdding(false)} className="px-4 py-2 bg-gray-100 rounded text-gray-600">取消</button>
-              <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded">保存</button>
+              <button type="submit" disabled={isProcessingImg} className="px-4 py-2 bg-emerald-600 text-white rounded disabled:opacity-50">保存</button>
             </div>
           </form>
           <style>{`.input-field { width: 100%; border: 1px solid #d1d5db; border-radius: 0.375rem; padding: 0.5rem 0.75rem; font-size: 0.875rem; outline: none; } .input-field:focus { border-color: #10b981; }`}</style>
